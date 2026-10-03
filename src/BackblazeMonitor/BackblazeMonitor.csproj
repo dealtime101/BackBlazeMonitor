@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>BackblazeMonitor</AssemblyName>
+    <RootNamespace>BackblazeMonitor</RootNamespace>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <ApplicationIcon>..\..\backblaze-monitor.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
+    <ApplicationUseCompatibleTextRendering>false</ApplicationUseCompatibleTextRendering>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Product>Backblaze Monitor</Product>
+    <Description>Tile that monitors the Backblaze service and its upload rate</Description>
+    <Authors>Dealtime Worlds</Authors>
+    <Company>Dealtime Worlds</Company>
+    <Copyright>Copyright (c) 2026 Dealtime Worlds</Copyright>
+    <!-- Release: one framework-dependent exe (needs the .NET 8 Desktop Runtime) -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <DebugType>none</DebugType>
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\backblaze-monitor.ico" LogicalName="backblaze-monitor.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BackblazeMonitor.Core\BackblazeMonitor.Core.csproj" />
+  </ItemGroup>
+
+</Project>

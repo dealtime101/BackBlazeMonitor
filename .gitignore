@@ -1,0 +1,11 @@
+# Machine-specific files written next to the exe
+settings.txt
+historique.txt
+volumes.txt
+requete.txt
+error.log
+
+# .NET build output
+bin/
+obj/
+TestResults/

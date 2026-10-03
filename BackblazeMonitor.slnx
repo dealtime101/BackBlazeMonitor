@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BackblazeMonitor/BackblazeMonitor.csproj" />
+    <Project Path="src/BackblazeMonitor.Core.Tests/BackblazeMonitor.Core.Tests.csproj" />
+    <Project Path="src/BackblazeMonitor.Core/BackblazeMonitor.Core.csproj" />
+  </Folder>
+</Solution>

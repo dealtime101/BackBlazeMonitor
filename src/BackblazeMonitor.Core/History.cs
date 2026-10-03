@@ -1,0 +1,143 @@
+using System.Globalization;
+
+namespace BackblazeMonitor.Core;
+
+/// <summary>State kept for one log file: what was read, where, and the slots derived from it.</summary>
+public sealed class LogEntry
+{
+    /// <summary>UTC write time at the last read; <c>null</c> for an entry restored from the history file.</summary>
+    public DateTime? Stamp { get; set; }
+
+    /// <summary>File length at the last read.</summary>
+    public long Length { get; set; }
+
+    /// <summary>Position just after the last complete line read.</summary>
+    public long Pos { get; set; }
+
+    /// <summary>Bytes per 15-minute slot: slot start in ticks to bytes.</summary>
+    public Dictionary<long, double> Slots { get; } = new();
+
+    /// <summary>Blocks of the last 30 minutes (window points).</summary>
+    public IReadOnlyList<LogBlock> Points { get; set; } = Array.Empty<LogBlock>();
+}
+
+/// <summary>Result of <see cref="HistoryCalculator.Get"/>.</summary>
+/// <param name="Rates">Average rate (bits/s) per slot; the last, still in progress, is scaled to the elapsed time.</param>
+/// <param name="Bytes">Total bytes over the span.</param>
+/// <param name="Seconds">Duration covered, current slot included.</param>
+/// <param name="First">Start of the first slot (used for hover).</param>
+/// <param name="SlotBytes">Bytes of each slot (used for hover).</param>
+public sealed record HistoryResult(double[] Rates, double Bytes, double Seconds, DateTime First, double[] SlotBytes);
+
+/// <summary>History: average rate per slot, slots aligned to the clock.</summary>
+public static class HistoryCalculator
+{
+    /// <summary>Slot start (ticks) containing <paramref name="time"/> in 15-minute slots.</summary>
+    public static long SlotStart(DateTime time) => time.Ticks - (time.Ticks % BzConstants.SlotTicks);
+
+    /// <summary>Adds the bytes of <paramref name="blocks"/> to <paramref name="slots"/> (15-minute slots).</summary>
+    public static void AddBlocks(IDictionary<long, double> slots, IEnumerable<LogBlock> blocks)
+    {
+        foreach (var p in blocks)
+        {
+            var k = SlotStart(p.Time);
+            slots[k] = (slots.TryGetValue(k, out var old) ? old : 0.0) + p.Bytes;
+        }
+    }
+
+    /// <summary>
+    /// Average rate (bits/s) per slot of <paramref name="step"/> seconds over <paramref name="span"/>
+    /// seconds, slots aligned to the clock. The last one, still in progress, is scaled to the time
+    /// already elapsed (at least 60 s).
+    /// </summary>
+    /// <param name="slotSets">Tables {start in ticks to bytes}, one per log.</param>
+    public static HistoryResult Get(IEnumerable<IReadOnlyDictionary<long, double>> slotSets, int span, int step, DateTime now)
+    {
+        var stepT = (long)step * 10_000_000L;
+        var cur = now.Ticks - (now.Ticks % stepT);
+        var n = (int)Math.Round((double)span / step, MidpointRounding.ToEven);
+        var first = cur - (n - 1) * stepT;
+        var bytes = new double[n];
+        var total = 0.0;
+        foreach (var slots in slotSets)
+        {
+            foreach (var (k, v) in slots)
+            {
+                if (k < first || k >= cur + stepT) continue;
+                bytes[(int)((k - first) / stepT)] += v;
+                total += v;
+            }
+        }
+
+        var elapsed = Math.Max(60.0, (now.Ticks - cur) / 1e7);
+        var rates = new double[n];
+        for (var i = 0; i < n; i++) rates[i] = bytes[i] * 8 / step;
+        rates[n - 1] = bytes[n - 1] * 8 / elapsed;
+        return new HistoryResult(rates, total, (n - 1) * (double)step + elapsed, new DateTime(first), bytes);
+    }
+}
+
+/// <summary>
+/// historique.txt: slots of the logs already read, carried over between launches. One
+/// <c>"NN.log ticks bytes"</c> line per slot.
+/// </summary>
+public static class HistoryFile
+{
+    /// <summary>
+    /// Reads the file. Missing or damaged: returns an empty table (history restarts from the logs).
+    /// Entries come back without a Stamp, so a present log is re-read from zero.
+    /// </summary>
+    /// <param name="historyPath">Path of historique.txt.</param>
+    /// <param name="logDir">Folder joined to each log name.</param>
+    public static Dictionary<string, LogEntry> Read(string historyPath, string logDir)
+    {
+        var logs = new Dictionary<string, LogEntry>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var l in File.ReadAllLines(historyPath))
+            {
+                if (l.Length == 0) continue;
+                var f = l.Split(' ');
+                if (f.Length != 3) return new Dictionary<string, LogEntry>(StringComparer.OrdinalIgnoreCase);
+                var t = long.Parse(f[1], NumberStyles.Integer, CultureInfo.InvariantCulture);
+                var b = double.Parse(f[2], NumberStyles.Float, CultureInfo.InvariantCulture);
+                var p = Path.Combine(logDir, f[0]);
+                if (!logs.TryGetValue(p, out var e)) logs[p] = e = new LogEntry();
+                e.Slots[t] = b;
+            }
+        }
+        catch
+        {
+            return new Dictionary<string, LogEntry>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return logs;
+    }
+
+    /// <summary>
+    /// Writes the file. Returns whether it was written: on a full disk, vanished folder or locked file the
+    /// caller retries on the next tick instead of recording a save that did not happen.
+    /// </summary>
+    public static bool Save(string historyPath, IReadOnlyDictionary<string, LogEntry> logs)
+    {
+        try
+        {
+            var lines = new List<string>();
+            foreach (var (p, e) in logs)
+            {
+                var name = Path.GetFileName(p);
+                foreach (var (t, b) in e.Slots)
+                {
+                    lines.Add(name + " " + t.ToString(CultureInfo.InvariantCulture) + " " + b.ToString("R", CultureInfo.InvariantCulture));
+                }
+            }
+
+            File.WriteAllLines(historyPath, lines);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}

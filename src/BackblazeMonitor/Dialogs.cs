@@ -1,0 +1,109 @@
+using BackblazeMonitor.Core;
+
+namespace BackblazeMonitor;
+
+/// <summary>Modal box that asks for the time window ("08:00-22:00=3"). Replaces the VisualBasic InputBox.</summary>
+internal sealed class ScheduleDialog : Form
+{
+    private readonly TextBox _text;
+
+    private ScheduleDialog(string initial, bool topMost)
+    {
+        SuspendLayout();
+        AutoScaleDimensions = new SizeF(96f, 96f);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        Text = ScheduleTexts.Title;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.CenterScreen;
+        TopMost = topMost;
+        ClientSize = new Size(400, 210);
+        Font = SystemFonts.MessageBoxFont ?? Font;
+
+        var prompt = new Label
+        {
+            Text = ScheduleTexts.Prompt,
+            Location = new Point(12, 12),
+            Size = new Size(376, 130),
+            AutoSize = false,
+        };
+        _text = new TextBox
+        {
+            Text = initial,
+            Location = new Point(12, 150),
+            Size = new Size(376, 23),
+            TabIndex = 0,
+            AccessibleName = "Time window",
+        };
+        var ok = new Button
+        {
+            Text = "OK",
+            DialogResult = DialogResult.OK,
+            Location = new Point(232, 178),
+            Size = new Size(75, 26),
+            TabIndex = 1,
+        };
+        var cancel = new Button
+        {
+            Text = "Cancel",
+            DialogResult = DialogResult.Cancel,
+            Location = new Point(313, 178),
+            Size = new Size(75, 26),
+            TabIndex = 2,
+        };
+        Controls.AddRange(new Control[] { prompt, _text, ok, cancel });
+        AcceptButton = ok;
+        CancelButton = cancel;
+        ResumeLayout(false);
+        Shown += (_, _) =>
+        {
+            _text.SelectAll();
+            _text.Focus();
+        };
+    }
+
+    /// <summary>Shows the box. Returns the text typed, or <c>null</c> when cancelled.</summary>
+    public static string? Prompt(IWin32Window? owner, string initial, bool topMost)
+    {
+        using var d = new ScheduleDialog(initial, topMost);
+        var r = owner is null ? d.ShowDialog() : d.ShowDialog(owner);
+        return r == DialogResult.OK ? d._text.Text : null;
+    }
+}
+
+/// <summary>The "Progress per disk" window: a read-only monospaced text.</summary>
+internal static class VolumeProgressDialog
+{
+    /// <summary>Shows the text in a modal window.</summary>
+    public static void Show(IWin32Window? owner, string text, bool topMost, Font mono)
+    {
+        using var f = new Form
+        {
+            Text = "Progress per disk",
+            StartPosition = FormStartPosition.CenterScreen,
+            ClientSize = new Size(560, 250),
+            TopMost = topMost,
+            ShowInTaskbar = false,
+            MinimizeBox = false,
+        };
+        f.AutoScaleDimensions = new SizeF(96f, 96f);
+        f.AutoScaleMode = AutoScaleMode.Dpi;
+        var t = new TextBox
+        {
+            Multiline = true,
+            ReadOnly = true,
+            Dock = DockStyle.Fill,
+            BorderStyle = BorderStyle.None,
+            Font = mono,
+            Text = text,
+            AccessibleName = "Progress per disk",
+            BackColor = SystemColors.Window,
+        };
+        f.Controls.Add(t);
+        f.Shown += (_, _) => t.Select(0, 0);
+        if (owner is null) f.ShowDialog();
+        else f.ShowDialog(owner);
+    }
+}
