@@ -668,11 +668,12 @@ internal sealed partial class MainForm : Form, ITrayHost
     // reported in a balloon, since the action can also start from the tray menu with the tile hidden.
     private void RunServiceAction(ServiceAction action)
     {
-        // Recorded before the action, restored if it did not happen: the stop is seen by the next tick
+        // Recorded before the action, restored only if it did not happen (UAC declined): a failed stop or
+        // restart can leave the service stopped, and that stop is ours
         var askedBefore = _alerts.AskedAt;
         if (action != ServiceAction.Start) _alerts.MarkAsked(DateTime.Now);
         var outcome = RunPrivileged(ServiceCommands.RequestName(action), ServiceCommands.GetElevatedScript(action));
-        if (outcome != ActionOutcome.Done && action != ServiceAction.Start) _alerts.AskedAt = askedBefore;
+        if (!ActionOutcomes.CountsAsAsked(outcome) && action != ServiceAction.Start) _alerts.AskedAt = askedBefore;
 
         try
         {

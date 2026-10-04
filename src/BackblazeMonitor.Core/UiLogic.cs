@@ -29,6 +29,13 @@ public static class ActionOutcomes
     public static ActionOutcome FromNativeError(int nativeErrorCode) =>
         nativeErrorCode == ErrorCancelled ? ActionOutcome.Cancelled : ActionOutcome.Failed;
 
+    /// <summary>
+    /// Whether a stop or restart that ended this way counts as "requested here" for the stop alert. A failed one
+    /// may have left the service stopped half-way: still ours, no false alert. Only a declined UAC prompt
+    /// changed nothing (BAC466.14).
+    /// </summary>
+    public static bool CountsAsAsked(ActionOutcome outcome) => outcome != ActionOutcome.Cancelled;
+
     /// <summary>Result of an agent request: <c>true</c>/<c>false</c> once it ran.</summary>
     public static ActionOutcome FromBool(bool ok) => ok ? ActionOutcome.Done : ActionOutcome.Failed;
 }

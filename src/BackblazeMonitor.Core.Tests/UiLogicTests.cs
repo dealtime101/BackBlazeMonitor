@@ -20,6 +20,14 @@ public class UiLogicTests
     public void NativeErrorMapsToOutcome(int code, ActionOutcome expected) =>
         Assert.Equal(expected, ActionOutcomes.FromNativeError(code));
 
+    // BAC466.14: a failed stop/restart still counts as requested here; only a declined UAC prompt does not
+    [Theory]
+    [InlineData(ActionOutcome.Done, true)]
+    [InlineData(ActionOutcome.Failed, true)]
+    [InlineData(ActionOutcome.Cancelled, false)]
+    public void Only_a_declined_uac_prompt_is_not_a_request(ActionOutcome outcome, bool expected) =>
+        Assert.Equal(expected, ActionOutcomes.CountsAsAsked(outcome));
+
     [Fact]
     public void ServiceNoticeDistinguishesCancelledFromFailed()
     {
