@@ -120,6 +120,19 @@ internal interface ITrayHost
 
     void ShowVolumes();
 
+    /// <summary>The optional vacation mode is set up (settings.txt): its menu exists.</summary>
+    bool VacationEnabled { get; }
+
+    string VacationMenuText { get; }
+
+    bool VacationStopEnabled { get; }
+
+    /// <summary>Sets the vacation mode for that many hours; 0 stops it.</summary>
+    void SetVacation(int hours);
+
+    /// <summary>Asks for a fresh read of the vacation state (answered later, through <see cref="TrayController.UpdateVacation"/>).</summary>
+    void RefreshVacation();
+
     bool IsStartupEnabled();
 
     void ToggleStartup();
@@ -143,6 +156,8 @@ internal sealed class TrayController : IDisposable
     private readonly ToolStripMenuItem _units;
     private readonly ToolStripMenuItem _graph;
     private readonly ToolStripMenuItem _logon;
+    private readonly ToolStripMenuItem? _vac;
+    private readonly ToolStripMenuItem? _vacOff;
     private Color _color = Color.Gray;
     private string _text = "";
 
@@ -162,11 +177,30 @@ internal sealed class TrayController : IDisposable
         _logon = new ToolStripMenuItem("Start at sign-in");
         var quit = new ToolStripMenuItem("Quit");
 
-        _menu.Items.AddRange(new ToolStripItem[]
+        var items = new List<ToolStripItem> { show, _start, _stop, _restart, new ToolStripSeparator() };
+        if (host.VacationEnabled)
         {
-            show, _start, _stop, _restart, new ToolStripSeparator(), _units, vols, _graph,
-            new ToolStripSeparator(), _logon, quit,
-        });
+            _vac = new ToolStripMenuItem("Vacation mode");
+            foreach (var h in Vacation.Hours) _vac.DropDownItems.Add(new ToolStripMenuItem(Vacation.Label(h)));
+            _vac.DropDownItems.Add(new ToolStripSeparator());
+            _vacOff = new ToolStripMenuItem("Stop vacation mode");
+            _vac.DropDownItems.Add(_vacOff);
+            _vac.DropDownItemClicked += (_, e) =>
+            {
+                if (e.ClickedItem == _vacOff)
+                {
+                    Safe(() => host.SetVacation(0));
+                    return;
+                }
+
+                var i = e.ClickedItem is null ? -1 : _vac.DropDownItems.IndexOf(e.ClickedItem);
+                if (i >= 0 && i < Vacation.Hours.Count) Safe(() => host.SetVacation(Vacation.Hours[i]));
+            };
+            items.Add(_vac);
+        }
+
+        items.AddRange(new ToolStripItem[] { _units, vols, _graph, new ToolStripSeparator(), _logon, quit });
+        _menu.Items.AddRange(items.ToArray());
 
         show.Click += (_, _) => Safe(host.ShowTile);
         _start.Click += (_, _) => Safe(() => host.RunService(ServiceAction.Start));
@@ -217,6 +251,14 @@ internal sealed class TrayController : IDisposable
         }
     }
 
+    /// <summary>Vacation entry text and stop item, from the last known state.</summary>
+    public void UpdateVacation()
+    {
+        if (_vac is null || _vacOff is null) return;
+        _vac.Text = _host.VacationMenuText;
+        _vacOff.Enabled = _host.VacationStopEnabled;
+    }
+
     /// <summary>Shows a balloon.</summary>
     public void Balloon(string title, string text, ToolTipIcon icon)
     {
@@ -237,6 +279,13 @@ internal sealed class TrayController : IDisposable
         _stop.Enabled = _host.CanStop;
         _restart.Enabled = _host.CanRestart;
         _logon.Checked = _host.IsStartupEnabled();
+        if (_vac is not null)
+        {
+            // Last known state at once; the fresh read, when it answers, updates the text
+            UpdateVacation();
+            _host.RefreshVacation();
+        }
+
         _units.Checked = !_host.ShowBits;
         for (var i = 0; i < _graph.DropDownItems.Count; i++)
         {

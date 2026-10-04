@@ -28,6 +28,9 @@ internal sealed partial class MainForm : Form, ITrayHost
     private bool _acting;        // a privileged action or bzcli is running
     private bool _syncing;       // programmatic update of the limit menu
     private bool _qosReading;
+    private VacationState? _vac;  // last known state of the optional vacation mode
+    private int _vacLeft = 1;     // ticks before the next state read
+    private bool _vacBusy;        // a state read is running
     private bool _filesOpen;
     private string _filesKey = "";
     private int? _hoverX;
@@ -83,6 +86,16 @@ internal sealed partial class MainForm : Form, ITrayHost
     }
 
     public void RunService(ServiceAction action) => ConfirmServiceAction(action);
+
+    bool ITrayHost.VacationEnabled => _settings.VacationEnabled;
+
+    string ITrayHost.VacationMenuText => Vacation.MenuText(_vac);
+
+    bool ITrayHost.VacationStopEnabled => Vacation.StopEnabled(_vac);
+
+    void ITrayHost.SetVacation(int hours) => SetVacation(hours);
+
+    void ITrayHost.RefreshVacation() => _ = ReadVacationAsync();
 
     public void ToggleUnits()
     {
@@ -338,7 +351,14 @@ internal sealed partial class MainForm : Form, ITrayHost
         SyncQos(now);
         RenderBzState(r.Bz);
 
-        var stall = _alerts.CheckStall(_monitor.LastSent, _remaining.Files, _bzSync.Info.Schedule, now);
+        // One state read per ~5 min, off the UI thread: ssh can take seconds
+        if (_settings.VacationEnabled && --_vacLeft <= 0)
+        {
+            _vacLeft = Vacation.ReadEveryTicks;
+            _ = ReadVacationAsync();
+        }
+
+        var stall =_alerts.CheckStall(_monitor.LastSent, _remaining.Files, _bzSync.Info.Schedule, now);
         if (stall is not null) _tray.Balloon(Alerts.StallTitle, stall, ToolTipIcon.Warning);
     }
 
@@ -464,7 +484,7 @@ internal sealed partial class MainForm : Form, ITrayHost
         _btnStop.Enabled = _canStop;
         _btnRestart.Enabled = _canRestart;
         _lblUpdated.Text = "Updated " + now.ToString("HH':'mm':'ss", BzConstants.Invariant);
-        _tray.SetStatus(color, Formatting.GetTrayText(_lblStatus.Text, _lblSpeed.Text));
+        _tray.SetStatus(color, Formatting.GetTrayText(_lblStatus.Text, _lblSpeed.Text, _vac is { Active: true } ? _vac.Text : null));
 
         if (statusForAlerts is not null)
         {
@@ -660,8 +680,71 @@ internal sealed partial class MainForm : Form, ITrayHost
     {
         if (_acting) return;
         var ask = ServiceCommands.GetConfirmation(action);
-        if (ask is not null && Msg(ask, "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+        if (action == ServiceAction.Start && _settings.VacationEnabled)
+        {
+            // Starting alone may be undone by whatever stopped the service: offer to hold that off first
+            var choice = StartChoiceDialog.Show(Visible ? this : null, Vacation.StartAsk, TopMost);
+            if (choice == StartChoice.Cancel) return;
+            // Set BEFORE the start: otherwise the other tool may stop it again in between. A failed pose is
+            // said here (the tile's message is lost when it is hidden), and the choice stays the user's.
+            if (choice == StartChoice.StartWithVacation && !SetVacation(Vacation.DefaultHours) &&
+                Msg(Vacation.PoseFailedAsk, "Vacation mode", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return;
+            }
+        }
+        else if (ask is not null && Msg(ask, "Confirmation", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+        {
+            return;
+        }
+
         RunServiceAction(action);
+    }
+
+    // ---------- Vacation mode (optional, over ssh) ----------
+    private async Task ReadVacationAsync()
+    {
+        if (!_settings.VacationEnabled || _vacBusy || _acting) return;
+        _vacBusy = true;
+        try
+        {
+            var (host, key) = (_settings.VacationHost, _settings.VacationKey);
+            var (ok, text) = await Task.Run(() => VacationSsh.Run(host, key, "status"));
+            _vac = Vacation.FromStatusCall(ok, text);
+            _tray.UpdateVacation();
+        }
+        catch (Exception ex)
+        {
+            LogOnce("vacation", ex);
+        }
+        finally
+        {
+            _vacBusy = false;
+        }
+    }
+
+    // 0 hours stops the mode. The window and the tray menu are locked meanwhile, the wait pumps messages. The
+    // result is said where the limit messages are said.
+    private bool SetVacation(int hours)
+    {
+        var command = Vacation.Command(hours);
+        if (command is null || _acting || !_settings.VacationEnabled) return false;
+        var (host, key) = (_settings.VacationHost, _settings.VacationKey);
+        bool ok;
+        BeginExclusive();
+        try
+        {
+            var call = Task.Run(() => VacationSsh.Run(host, key, command));
+            ok = UiWait.Until(() => call.IsCompleted, Vacation.TimeoutMs + 10_000) && call.Result.Ok;
+        }
+        finally
+        {
+            EndExclusive();
+        }
+
+        SetLimitMessage(Vacation.ResultMessage(hours, ok), ok);
+        _vacLeft = 1; // read the state again on the next tick
+        return ok;
     }
 
     // Waits for the action to finish: the state re-read afterwards is the real one. Refusal and failure are

@@ -55,6 +55,56 @@ internal static class QosReader
     }
 }
 
+/// <summary>One ssh round trip of the vacation mode, with the key named in settings.txt.</summary>
+internal static class VacationSsh
+{
+    /// <summary>
+    /// Runs one remote command (<c>status</c>, <c>off</c>, <c>on &lt;hours&gt;</c>) and returns whether ssh exited
+    /// with 0, plus its output (stdout and stderr). Cut after <see cref="Vacation.TimeoutMs"/>. Blocking: call
+    /// it from a worker thread.
+    /// </summary>
+    public static (bool Ok, string Text) Run(string host, string key, string command)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("ssh.exe")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            foreach (var a in Vacation.SshArguments(host, key, command)) psi.ArgumentList.Add(a);
+            using var p = Process.Start(psi);
+            if (p is null) return (false, "");
+            var err = p.StandardError.ReadToEndAsync();
+            var outTask = p.StandardOutput.ReadToEndAsync();
+            if (!p.WaitForExit(Vacation.TimeoutMs))
+            {
+                try
+                {
+                    p.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // Already gone
+                }
+
+                p.WaitForExit();
+                return (false, "timeout");
+            }
+
+            p.WaitForExit(); // the exit code is only valid after this
+            var text = ((outTask.Wait(1000) ? outTask.Result : "") + " " + (err.Wait(1000) ? err.Result : "")).Trim();
+            return (p.ExitCode == 0, text);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+}
+
 /// <summary>Switches Backblaze to automatic mode through bzcli (no admin rights needed).</summary>
 internal static class BzCli
 {

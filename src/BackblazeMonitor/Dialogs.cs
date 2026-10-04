@@ -73,6 +73,68 @@ internal sealed class ScheduleDialog : Form
     }
 }
 
+/// <summary>Answer of the start box.</summary>
+internal enum StartChoice
+{
+    Cancel,
+    Start,
+    StartWithVacation,
+}
+
+/// <summary>
+/// Start confirmation with a third button that sets the vacation mode first (MessageBox cannot do three
+/// custom buttons).
+/// </summary>
+internal static class StartChoiceDialog
+{
+    public static StartChoice Show(IWin32Window? owner, string text, bool topMost)
+    {
+        var choice = StartChoice.Cancel;
+        using var f = new Form
+        {
+            Text = "Confirmation",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterScreen,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ShowInTaskbar = false,
+            TopMost = topMost,
+            ClientSize = new Size(430, 170),
+        };
+        f.AutoScaleDimensions = new SizeF(96f, 96f);
+        f.AutoScaleMode = AutoScaleMode.Dpi;
+        f.Font = SystemFonts.MessageBoxFont ?? f.Font;
+        var label = new Label { Text = text, Location = new Point(58, 16), Size = new Size(356, 96), AutoSize = false };
+        var icon = new PictureBox { Image = SystemIcons.Warning.ToBitmap(), Location = new Point(16, 18), Size = new Size(32, 32) };
+        var start = new Button { Text = "Start", Location = new Point(16, 126), Size = new Size(110, 28), TabIndex = 0 };
+        var vacation = new Button
+        {
+            Text = $"Start + vacation {Vacation.DefaultHours} h",
+            Location = new Point(134, 126),
+            Size = new Size(180, 28),
+            TabIndex = 1,
+        };
+        var cancel = new Button { Text = "Cancel", Location = new Point(322, 126), Size = new Size(90, 28), TabIndex = 2 };
+        start.Click += (_, _) =>
+        {
+            choice = StartChoice.Start;
+            f.Close();
+        };
+        vacation.Click += (_, _) =>
+        {
+            choice = StartChoice.StartWithVacation;
+            f.Close();
+        };
+        cancel.Click += (_, _) => f.Close();
+        f.Controls.AddRange(new Control[] { label, icon, start, vacation, cancel });
+        f.AcceptButton = start;
+        f.CancelButton = cancel;
+        if (owner is null) f.ShowDialog();
+        else f.ShowDialog(owner);
+        return choice;
+    }
+}
+
 /// <summary>The "Progress per disk" window: a read-only monospaced text.</summary>
 internal static class VolumeProgressDialog
 {

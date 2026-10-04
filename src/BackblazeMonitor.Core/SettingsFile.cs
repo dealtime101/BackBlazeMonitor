@@ -17,6 +17,8 @@ public sealed class Settings
     private static readonly Regex StallRx = new("StallAlertMin=([0-9]+)", Opt);
     private static readonly Regex ScheduleRx = new("Schedule=([^\r\n]*)", Opt);
     private static readonly Regex TopMostRx = new("TopMost=True", Opt);
+    private static readonly Regex VacHostRx = new("VacationHost=([^\r\n]*)", Opt);
+    private static readonly Regex VacKeyRx = new("VacationKey=([^\r\n]*)", Opt);
 
     /// <summary>Always on top (the pin).</summary>
     public bool TopMost { get; set; }
@@ -33,6 +35,15 @@ public sealed class Settings
     /// <summary>Time window in place; <c>null</c> = none.</summary>
     public Schedule? Schedule { get; set; }
 
+    /// <summary>Host of the optional vacation mode (ssh); empty = the feature is off. Edited by hand.</summary>
+    public string VacationHost { get; set; } = "";
+
+    /// <summary>Path of the ssh key of the vacation mode. Edited by hand.</summary>
+    public string VacationKey { get; set; } = "";
+
+    /// <summary>Whether the vacation mode is set up (both keys present and usable).</summary>
+    public bool VacationEnabled => Vacation.IsConfigured(VacationHost, VacationKey);
+
     /// <summary>Parses the text of settings.txt; anything missing or invalid keeps its default.</summary>
     public static Settings Parse(string? text)
     {
@@ -46,18 +57,29 @@ public sealed class Settings
         m = ScheduleRx.Match(cfg);
         if (m.Success) s.Schedule = Schedule.Parse(m.Groups[1].Value);
         if (TopMostRx.IsMatch(cfg)) s.TopMost = true;
+        m = VacHostRx.Match(cfg);
+        if (m.Success) s.VacationHost = m.Groups[1].Value.Trim();
+        m = VacKeyRx.Match(cfg);
+        if (m.Success) s.VacationKey = m.Groups[1].Value.Trim();
         return s;
     }
 
     /// <summary>The lines of settings.txt.</summary>
-    public IReadOnlyList<string> ToLines() => new[]
+    public IReadOnlyList<string> ToLines()
     {
-        "TopMost=" + (TopMost ? "True" : "False"),
-        "Units=" + (ShowBits ? "bits" : "bytes"),
-        "Period=" + Period.ToString(CultureInfo.InvariantCulture),
-        "StallAlertMin=" + StallAlertMin.ToString(CultureInfo.InvariantCulture),
-        "Schedule=" + (Schedule?.Text ?? ""),
-    };
+        var lines = new List<string>
+        {
+            "TopMost=" + (TopMost ? "True" : "False"),
+            "Units=" + (ShowBits ? "bits" : "bytes"),
+            "Period=" + Period.ToString(CultureInfo.InvariantCulture),
+            "StallAlertMin=" + StallAlertMin.ToString(CultureInfo.InvariantCulture),
+            "Schedule=" + (Schedule?.Text ?? ""),
+        };
+        // Hand-edited, kept as found: written back only when present, so a plain file stays plain
+        if (VacationHost.Length > 0) lines.Add("VacationHost=" + VacationHost);
+        if (VacationKey.Length > 0) lines.Add("VacationKey=" + VacationKey);
+        return lines;
+    }
 
     /// <summary>The text of settings.txt: lines each ended by CR LF.</summary>
     public string ToFileText() => string.Concat(ToLines().Select(l => l + "\r\n"));
@@ -80,7 +102,9 @@ public sealed class Settings
     {
         try
         {
-            File.WriteAllText(path, ToFileText(), Encoding.ASCII);
+            // UTF-8 without BOM: the same bytes as ASCII for the plain keys, and a key path with an accent
+            // (a user profile name) survives the round trip
+            File.WriteAllText(path, ToFileText(), new UTF8Encoding(false));
             return true;
         }
         catch

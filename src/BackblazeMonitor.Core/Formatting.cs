@@ -73,9 +73,10 @@ public static class Formatting
     }
 
     /// <summary>Tray tooltip: "Backblaze: status\nspeed", capped at 63 characters (NotifyIcon throws beyond).</summary>
-    public static string GetTrayText(string status, string speed)
+    public static string GetTrayText(string status, string speed, string? vacation = null)
     {
         var t = $"Backblaze: {status}\n{speed}";
+        if (!string.IsNullOrEmpty(vacation)) t += $"\nVacation: {vacation}";
         if (t.Length > BzConstants.TrayTextMax) t = t.Substring(0, BzConstants.TrayTextMax);
         return t;
     }
