@@ -177,7 +177,7 @@ public class SettingsAndBzInfoTests
     [Fact]
     public void App_identity()
     {
-        Assert.Equal("Backblaze Monitor v1.0", AppInfo.Title);
+        Assert.Equal("Backblaze Monitor v1.1", AppInfo.Title);
         Assert.Equal(3000, BzConstants.TickMs);
         Assert.Equal(9_000_000_000L, BzConstants.SlotTicks);
         Assert.Equal(1800, BzConstants.WindowSec);
