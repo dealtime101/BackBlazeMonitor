@@ -42,6 +42,8 @@ public sealed class LogMonitor
     private readonly string _logDir;
     private readonly string _historyPath;
     private IReadOnlyList<LogBlock> _points = Array.Empty<LogBlock>();
+    private bool _histDirty;
+    private DateTime? _histSaveAt;
 
     public LogMonitor(string logDir, string historyPath)
     {
@@ -122,7 +124,15 @@ public sealed class LogMonitor
         {
             State = NetState.NoLog;
             _points = Array.Empty<LogBlock>();
-            Logs = new Dictionary<string, LogEntry>(StringComparer.OrdinalIgnoreCase);
+            // No .log left (all zipped, or the rotation has not created the new one yet): the slots already
+            // read stay, the tile cannot read them again from the zips. Only those outside the period go.
+            var oldest = now.AddSeconds(-Periods.LongestSec).Ticks;
+            foreach (var k in Logs.Keys.ToList())
+            {
+                if (Logs[k].Slots.Keys.Any(t => t >= oldest)) Logs[k].Points = Array.Empty<LogBlock>();
+                else Logs.Remove(k);
+            }
+
             return 0;
         }
 
@@ -187,11 +197,20 @@ public sealed class LogMonitor
         // All logs: at midnight, the 30-minute window straddles two of them
         if (changed) _points = Logs.Values.SelectMany(e => e.Points).OrderBy(p => p.Time).ToList();
 
-        // Saved on every new slot: at worst, we lose the last quarter hour of a log that got zipped while the
-        // tile was closed
+        // Saved on every new slot, and as soon as the content changed (more bytes in a slot already counted),
+        // at most every 5 min: at worst, 5 min of a log that got zipped while the tile was closed. The flag
+        // stays up until a write succeeds.
+        if (changed) _histDirty = true;
         var n = 0;
         foreach (var e in Logs.Values) n += e.Slots.Count;
-        if (n != HistSaved && SaveHistory()) HistSaved = n;
+        var due = _histDirty && (_histSaveAt is null || (now - _histSaveAt.Value).TotalMinutes >= 5);
+        if ((n != HistSaved || due) && SaveHistory())
+        {
+            HistSaved = n;
+            _histDirty = false;
+            _histSaveAt = now;
+        }
+
         return read;
     }
 

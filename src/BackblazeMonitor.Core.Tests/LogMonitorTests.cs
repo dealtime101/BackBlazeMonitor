@@ -146,6 +146,62 @@ public sealed class LogMonitorTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_dir, "later", "historique.txt")));
     }
 
+    // C1: no .log left (everything zipped, rotation not done): the slots already read must survive, and the
+    // reappearing log must not overwrite historique.txt with its own slots only
+    [Fact]
+    public void Losing_every_log_keeps_the_history_and_a_returning_log_does_not_overwrite_it()
+    {
+        WriteLog("24.log", Lines.Blk("2026-09-24 12:00:00", 5000) + "\r\n", "2026-09-24 12:00:00");
+        var m = NewMonitor();
+        m.Sample(T("2026-09-24 12:05:00"));
+        Assert.Equal("1 logs, 5000 bytes", Saved());
+
+        File.Delete(Path.Combine(_logDir, "24.log"));
+        m.Sample(T("2026-09-25 00:00:30"));
+        Assert.Equal(NetState.NoLog, m.State);
+        Assert.Empty(m.Points);
+        Assert.Single(m.Logs); // kept: still inside the 7 days
+        Assert.Equal("1 logs, 5000 bytes", Saved());
+
+        WriteLog("25.log", Lines.Blk("2026-09-25 00:01:00", 300) + "\r\n", "2026-09-25 00:01:00");
+        m.Sample(T("2026-09-25 00:02:00"));
+        Assert.Equal(NetState.Init, m.State);
+        Assert.Equal("2 logs, 5300 bytes", Saved());
+    }
+
+    // C3: more bytes in a slot already counted: the slot count does not change, the content did
+    [Fact]
+    public void More_bytes_in_a_counted_slot_are_saved_within_five_minutes()
+    {
+        WriteLog("25.log", Lines.Blk("2026-09-25 00:01:00", 100) + "\r\n", "2026-09-25 00:01:00");
+        var m = NewMonitor();
+        m.Sample(T("2026-09-25 00:02:00"));
+        Assert.Equal("1 logs, 100 bytes", Saved());
+
+        File.AppendAllText(Path.Combine(_logDir, "25.log"), Lines.Blk("2026-09-25 00:03:00", 200) + "\r\n");
+        File.SetLastWriteTime(Path.Combine(_logDir, "25.log"), T("2026-09-25 00:03:00"));
+        m.Sample(T("2026-09-25 00:04:00")); // same slot, 2 min after the last save: held back
+        Assert.Equal("1 logs, 100 bytes", Saved());
+        m.Sample(T("2026-09-25 00:07:30")); // 5 min passed: written
+        Assert.Equal("1 logs, 300 bytes", Saved());
+    }
+
+    // C2: a write that fails leaves the previous file intact, and no .tmp behind
+    [Fact]
+    public void A_failed_history_write_leaves_the_previous_file_intact()
+    {
+        var logs = new Dictionary<string, LogEntry> { [Path.Combine(_logDir, "25.log")] = new() };
+        logs.Values.Single().Slots[1L] = 42;
+        Assert.True(HistoryFile.Save(_history, logs));
+        var before = File.ReadAllText(_history);
+        Assert.False(File.Exists(_history + ".tmp"));
+
+        Directory.CreateDirectory(_history + ".tmp"); // the temporary file cannot be created
+        logs.Values.Single().Slots[2L] = 99;
+        Assert.False(HistoryFile.Save(_history, logs));
+        Assert.Equal(before, File.ReadAllText(_history));
+    }
+
     // ---------- Slow upload, seen by the tile ----------
     [Fact]
     public void Slow_upload_is_uploading_then_no_transfer()
