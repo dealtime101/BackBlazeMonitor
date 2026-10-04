@@ -42,7 +42,8 @@ internal sealed partial class MainForm : Form, ITrayHost
         DateTime Now,
         BzInfoSyncResult? Bz,
         ServiceSnapshot? Service,
-        bool ServiceFailed);
+        bool ServiceFailed,
+        PauseWitness? Witness);
 
     public MainForm()
     {
@@ -302,7 +303,7 @@ internal sealed partial class MainForm : Form, ITrayHost
 
         // The first pass churns through hundreds of MB of text that the GC then keeps: give it back
         if (read > HeavyReadChars) GC.Collect();
-        return new PassResult(now, bz, svc, failed);
+        return new PassResult(now, bz, svc, failed, PauseWitness.Read(BzPaths.PauseWitnessPath));
     }
 
     private void Step(string where, Action action)
@@ -333,7 +334,7 @@ internal sealed partial class MainForm : Form, ITrayHost
         RenderNetwork(now);
         _ = UpdateRecentListAsync();
         RenderRemaining(now);
-        RenderService(r.Service, r.ServiceFailed, now);
+        RenderService(r.Service, r.ServiceFailed, now, r.Witness);
         SyncQos(now);
         RenderBzState(r.Bz);
 
@@ -403,10 +404,12 @@ internal sealed partial class MainForm : Form, ITrayHost
         _lblRemain.Text = Formatting.GetRemainingText(
             _remaining.Bytes, _remaining.Files, _monitor.Total / BzConstants.WindowSec, now);
 
-    private void RenderService(ServiceSnapshot? snap, bool failed, DateTime now)
+    private void RenderService(ServiceSnapshot? snap, bool failed, DateTime now, PauseWitness? rawWitness)
     {
         string? statusForAlerts = null;
         Color color;
+        var witness = _alerts.Effective(rawWitness);
+        string? stopReason = null;
         if (snap is null)
         {
             // The query threw: show a harmless state and leave the alert tracker alone
@@ -432,7 +435,18 @@ internal sealed partial class MainForm : Form, ITrayHost
                     (_canStart, _canStop, _canRestart) = (false, true, true);
                     break;
                 case ServiceStatusKind.Stopped:
-                    color = UiStyle.Red;
+                    if (witness is not null)
+                    {
+                        // Wanted: not the red of a failure
+                        color = UiStyle.Orange;
+                        _lblStatus.Text = ServiceText.PausedByWitness;
+                        stopReason = witness.Why;
+                    }
+                    else
+                    {
+                        color = UiStyle.Red;
+                    }
+
                     (_canStart, _canStop, _canRestart) = (true, false, false);
                     break;
                 default:
@@ -441,7 +455,7 @@ internal sealed partial class MainForm : Form, ITrayHost
                     break;
             }
 
-            if (snap.Exists) _lblDetails.Text = ServiceText.GetDetails(snap.StartType, snap.ProcessId, snap.WorkingSet, snap.PidFailed);
+            if (snap.Exists) _lblDetails.Text = ServiceText.GetDetails(snap.StartType, snap.ProcessId, snap.WorkingSet, snap.PidFailed, stopReason);
         }
 
         _lblStatus.ForeColor = color;
@@ -454,7 +468,7 @@ internal sealed partial class MainForm : Form, ITrayHost
 
         if (statusForAlerts is not null)
         {
-            var msg = _alerts.OnServiceStatus(statusForAlerts, now);
+            var msg = _alerts.OnServiceStatus(statusForAlerts, now, witness);
             if (msg is not null) _tray.Balloon(Alerts.StopTitle, msg, ToolTipIcon.Warning);
         }
     }
@@ -662,7 +676,7 @@ internal sealed partial class MainForm : Form, ITrayHost
 
         try
         {
-            RenderService(ServiceMonitor.Query(BzConstants.ServiceName), false, DateTime.Now);
+            RenderService(ServiceMonitor.Query(BzConstants.ServiceName), false, DateTime.Now, PauseWitness.Read(BzPaths.PauseWitnessPath));
         }
         catch (Exception ex)
         {

@@ -17,10 +17,12 @@ public static class Alerts
     /// <param name="prev">Service state on the previous tick; empty = not seen yet.</param>
     /// <param name="status">Service state now.</param>
     /// <param name="askedAt">Last stop requested from the tile.</param>
-    public static string? GetStopAlert(string prev, string status, DateTime askedAt, DateTime now)
+    public static string? GetStopAlert(string prev, string status, DateTime askedAt, DateTime now, PauseWitness? witness = null)
     {
         if (!Eq(status, "Stopped") || prev.Length == 0 || Eq(prev, "Stopped")) return null;
         if ((now - askedAt).TotalMinutes < 5) return null;
+        // A stop wanted by the external tool is not a failure: not within 5 min of its witness
+        if (witness is not null && (now - witness.At).TotalMinutes < 5) return null;
         return StopMessage;
     }
 
@@ -52,6 +54,29 @@ public static class Alerts
     private static bool Eq(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 }
 
+/// <summary>A stop wanted by an external tool, as its witness file tells it.</summary>
+/// <param name="At">Write time of the witness (local).</param>
+/// <param name="Why">First line of the witness: the reason; empty when there is none.</param>
+public sealed record PauseWitness(DateTime At, string Why)
+{
+    /// <summary>The witness from its write time and text; <c>null</c> when the text could not be read.</summary>
+    public static PauseWitness? Parse(DateTime at, string? text) =>
+        text is null ? null : new PauseWitness(at, text.Split('\n')[0].Trim());
+
+    /// <summary>Reads the witness file; <c>null</c> when it does not exist or cannot be read.</summary>
+    public static PauseWitness? Read(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? Parse(File.GetLastWriteTime(path), SharedFile.ReadText(path)) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}
+
 /// <summary>
 /// Alert state across ticks: the previous service state, when it has been running, the last stop requested
 /// here, and which silence was already reported (one alert per silence).
@@ -73,6 +98,13 @@ public sealed class AlertTracker
     /// <summary>Minutes without sending before the alert; 0 = never.</summary>
     public int StallMin { get; set; } = 120;
 
+    /// <summary>
+    /// The witness, unless it is older than the last time the service was seen running (then it is the leftover
+    /// of an earlier pause: the tool paused, Start was pressed here, and this stop is something else).
+    /// </summary>
+    public PauseWitness? Effective(PauseWitness? witness) =>
+        witness is not null && RunSince is { } since && witness.At < since ? null : witness;
+
     /// <summary>Records a stop or restart requested here: no stop alert for the next 5 minutes.</summary>
     public void MarkAsked(DateTime now) => AskedAt = now;
 
@@ -80,9 +112,9 @@ public sealed class AlertTracker
     /// Feeds the service state read on this tick ("" when the service does not exist). Returns the stop-alert
     /// message to show, or <c>null</c>.
     /// </summary>
-    public string? OnServiceStatus(string status, DateTime now)
+    public string? OnServiceStatus(string status, DateTime now, PauseWitness? witness = null)
     {
-        var msg = Alerts.GetStopAlert(SvcPrev, status, AskedAt, now);
+        var msg = Alerts.GetStopAlert(SvcPrev, status, AskedAt, now, witness);
         if (status == "Running" && SvcPrev != "Running") RunSince = now;
         SvcPrev = status;
         return msg;
@@ -154,6 +186,9 @@ public static class ServiceText
         _ => Get(status!),
     };
 
+    /// <summary>Status label of a service stopped on purpose by an external tool (orange, not the red of a failure).</summary>
+    public const string PausedByWitness = "Paused (arr-watch)";
+
     /// <summary>Details line when the service does not exist.</summary>
     public static string NotFoundDetails => $"'{BzConstants.ServiceName}' does not exist";
 
@@ -164,9 +199,11 @@ public static class ServiceText
     /// <param name="processId">Process id; <c>null</c> or 0 = service not running.</param>
     /// <param name="workingSetBytes">Working set of the process; <c>null</c> = not available.</param>
     /// <param name="pidFailed">The PID query threw.</param>
-    public static string GetDetails(string startType, int? processId, long? workingSetBytes, bool pidFailed = false)
+    /// <param name="stopReason">Reason written by the external tool that stopped the service; empty = none.</param>
+    public static string GetDetails(string startType, int? processId, long? workingSetBytes, bool pidFailed = false, string? stopReason = null)
     {
         var parts = new List<string> { Get(startType) };
+        if (!string.IsNullOrEmpty(stopReason)) parts.Add(stopReason);
         if (pidFailed)
         {
             parts.Add("PID ?");

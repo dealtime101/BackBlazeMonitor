@@ -68,6 +68,66 @@ public class AlertsTests
     [Fact]
     public void Manual_schedule_never() => Assert.Null(Alerts.GetStallAlert(Now.AddDays(-9), 5, "manual", 120, Now));
 
+    // ---------- Stop wanted by an external tool (its witness file) ----------
+    [Fact]
+    public void Witness_written_2_min_ago_silences_the_stop_alert() =>
+        Assert.Null(Alerts.GetStopAlert("Running", "Stopped", Never, Now, new PauseWitness(Now.AddMinutes(-2), "plex")));
+
+    [Fact]
+    public void Witness_written_10_min_ago_does_not() =>
+        Assert.NotNull(Alerts.GetStopAlert("Running", "Stopped", Never, Now, new PauseWitness(Now.AddMinutes(-10), "plex")));
+
+    [Fact]
+    public void Witness_parse_takes_the_first_line_trimmed_and_null_when_unreadable()
+    {
+        Assert.Equal("remote Plex stream", PauseWitness.Parse(Now, " remote Plex stream \r\nsecond line")!.Why);
+        Assert.Equal("", PauseWitness.Parse(Now, "")!.Why);
+        Assert.Null(PauseWitness.Parse(Now, null));
+        Assert.Null(PauseWitness.Read(Path.Combine(Path.GetTempPath(), "bbm-no-such-witness.txt")));
+    }
+
+    [Fact]
+    public void Witness_read_from_a_file_carries_its_write_time()
+    {
+        var f = Path.Combine(Path.GetTempPath(), "bbm-witness-" + Guid.NewGuid().ToString("N") + ".txt");
+        try
+        {
+            File.WriteAllText(f, "other machine's turn\r\n");
+            File.SetLastWriteTime(f, Now);
+            Assert.Equal(new PauseWitness(Now, "other machine's turn"), PauseWitness.Read(f));
+        }
+        finally
+        {
+            File.Delete(f);
+        }
+    }
+
+    [Fact]
+    public void Tracker_ignores_a_witness_older_than_the_last_run()
+    {
+        var t = new AlertTracker();
+        var w = new PauseWitness(Now.AddMinutes(-30), "plex");
+        Assert.Equal(w, t.Effective(w)); // never seen running: kept
+        t.OnServiceStatus("Running", Now);
+        Assert.Null(t.Effective(w)); // paused earlier, started here since: leftover
+        Assert.NotNull(t.Effective(new PauseWitness(Now.AddSeconds(1), "plex")));
+        // and the stop that follows is a real one
+        Assert.Equal(Alerts.StopMessage, t.OnServiceStatus("Stopped", Now.AddMinutes(10), t.Effective(w)));
+    }
+
+    [Fact]
+    public void Tracker_stop_by_the_tool_does_not_ring()
+    {
+        var t = new AlertTracker();
+        t.OnServiceStatus("Running", Now);
+        var w = new PauseWitness(Now.AddSeconds(2), "plex");
+        Assert.Null(t.OnServiceStatus("Stopped", Now.AddSeconds(3), t.Effective(w)));
+    }
+
+    [Fact]
+    public void Details_carry_the_reason_after_the_start_type() =>
+        Assert.Equal("Automatic  -  remote Plex stream", ServiceText.GetDetails("Automatic", null, null, false, "remote Plex stream"));
+
     // ---------- Tracker: one alert per silence ----------
     [Fact]
     public void Tracker_stop_rings_once_on_the_transition_and_not_after_a_request()

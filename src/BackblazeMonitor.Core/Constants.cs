@@ -78,6 +78,12 @@ public static class BzPaths
     public const string RemainPath = @"C:\ProgramData\Backblaze\bzdata\bzreports\bzstat_remainingbackup.xml";
     public const string TotalPath = @"C:\ProgramData\Backblaze\bzdata\bzreports\bzstat_totalbackup.xml";
 
+    /// <summary>
+    /// Witness an external tool writes just before it stops the service on purpose (first line: the reason)
+    /// and deletes before it starts it again. Absent on a machine without such a tool: then nothing changes.
+    /// </summary>
+    public const string PauseWitnessPath = @"C:\ProgramData\BackblazeMonitor\arr-watch.txt";
+
     /// <summary>Default PowerShell home, used inside the generated scheduled-task commands.</summary>
     public const string DefaultPsHome = @"C:\Windows\System32\WindowsPowerShell\v1.0";
 }
