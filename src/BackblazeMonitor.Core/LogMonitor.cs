@@ -229,13 +229,15 @@ public sealed class LogMonitor
         var cut = now.AddSeconds(-BzConstants.WindowSec);
         _points = _points.Where(p => p.Time >= cut).ToList();
 
+        // The peak is the highest TOTAL rate (sum of the blocks in flight), not the rate of one block
         Peak = 0.0;
         Total = 0.0;
-        foreach (var p in _points)
+        foreach (var v in RateCalculator.GetRateSeries(_points))
         {
-            if (p.Bits > Peak) Peak = p.Bits;
-            Total += p.Bytes;
+            if (v > Peak) Peak = v;
         }
+
+        foreach (var p in _points) Total += p.Bytes;
 
         if (_points.Count > 0)
         {
@@ -257,6 +259,9 @@ public sealed class LogMonitor
             Rate = 0.0;
             State = NetState.Idle;
         }
+
+        // The peak is the higher of the two measures: never under the rate displayed just above (BAC466.28)
+        if (Rate > Peak) Peak = Rate;
     }
 
     /// <summary>History of the chart period (24 h, 7 d); <c>null</c> for the live 30-minute curve (period 0).</summary>

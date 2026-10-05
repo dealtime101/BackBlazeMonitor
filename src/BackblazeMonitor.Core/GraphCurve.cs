@@ -31,19 +31,18 @@ public static class GraphCurve
         var baseY = h - 2;
         var t0 = now.AddSeconds(-BzConstants.WindowSec);
 
-        var max = 0.0;
-        foreach (var p in pts)
-        {
-            if (p.Bits > max) max = p.Bits;
-        }
-
+        // Total rate (sum of the threads), like the current rate, not the rate of one block
+        var series = RateCalculator.GetRateSeries(pts);
+        var max = series.Max();
         max = ScaleMax(max);
 
         var prevT = t0;
+        var k = -1;
         foreach (var p in pts)
         {
+            k++;
             var x = (float)(((p.Time - t0).TotalSeconds / window) * w);
-            var y = (float)(baseY - ((p.Bits / max) * (h - 5)));
+            var y = (float)(baseY - ((series[k] / max) * (h - 5)));
             // Gap in transmissions: drop back to zero so as not to suggest continuous sending
             if (RateCalculator.IsHole(prevT, p))
             {
@@ -122,7 +121,13 @@ public static class GraphCurve
         }
 
         var p = pts[lo];
-        if (lo > 0 && (t - pts[lo - 1].Time) < (p.Time - t)) p = pts[lo - 1];
+        var idx = lo;
+        if (lo > 0 && (t - pts[lo - 1].Time) < (p.Time - t))
+        {
+            p = pts[lo - 1];
+            idx = lo - 1;
+        }
+
         // The curve is continuous between two blocks with no gap, and after the last one while sending
         // continues. Anywhere else, further out, we are in a gap or it drops to zero
         bool run;
@@ -131,7 +136,7 @@ public static class GraphCurve
         if (!run && Math.Abs((p.Time - t).TotalSeconds) > BzConstants.GapSec / 2.0) return null;
         return new GraphHit(
             (p.Time - t0).TotalSeconds / window * w,
-            p.Time.ToString("HH':'mm':'ss", BzConstants.Invariant) + "  -  " + Formatting.FormatRate(p.Bits, bits) + "  -  " +
+            p.Time.ToString("HH':'mm':'ss", BzConstants.Invariant) + "  -  " + Formatting.FormatRate(RateCalculator.GetInFlightRate(pts, idx), bits) + "  -  " +
             Formatting.FormatSize(p.Bytes) + "\r\n" + p.Name);
     }
 }

@@ -204,11 +204,50 @@ public class HistoryAndGraphTests
         string.Join(' ', GraphCurve.Get(p, DateTime.Parse("2026-09-25 " + at, CultureInfo.InvariantCulture), 272, 38)
             .Select(c => $"{c.X.ToString("0", CultureInfo.InvariantCulture)},{c.Y.ToString("0", CultureInfo.InvariantCulture)}"));
 
+    // l2 (ends 11:45) started 20 s before the end of l1 (11:40): TWO threads in flight then, 524 kbps (BAC466.28)
     [Fact]
-    public void Slow_curve_continuous_right_edge_held() => Assert.Equal("0,36 181,36 181,28 227,28 272,28", Curve(Lents, "11:50"));
+    public void Slow_curve_continuous_right_edge_held() => Assert.Equal("0,36 181,36 181,21 227,28 272,28", Curve(Lents, "11:50"));
 
     [Fact]
-    public void Slow_curve_right_edge_at_zero_upload_stopped() => Assert.Equal("0,36 127,36 127,28 172,28 272,36", Curve(Lents, "11:56"));
+    public void Slow_curve_right_edge_at_zero_upload_stopped() => Assert.Equal("0,36 127,36 127,21 172,28 272,36", Curve(Lents, "11:56"));
+
+    // BAC466.28: the curve and the peak took the rate of ONE block, the current rate is the sum of the threads.
+    // Three 10 MB blocks at 400 kbps (209.7 s each) ending at t0, t0+10 and t0+20: 3 in flight at t0, then 2, then 1
+    private static readonly DateTime Tp = new(2026, 9, 25, 12, 0, 0);
+    private static readonly LogBlock[] Trois =
+        new[] { 0, 10, 20 }.Select(s => new LogBlock(Tp.AddSeconds(s), 400e3, 10485760, $"p{s}.mkv")).ToArray();
+
+    [Fact]
+    public void Series_is_the_blocks_in_flight_at_the_end_of_each() =>
+        Assert.Equal("1200 800 400", string.Join(' ', RateCalculator.GetRateSeries(Trois).Select(v => (v / 1e3).ToString("0", CultureInfo.InvariantCulture))));
+
+    [Fact]
+    public void Series_five_blocks_ending_in_the_same_second_are_all_in_flight_for_each_other()
+    {
+        var t = new DateTime(2026, 9, 27, 14, 0, 0);
+        var five = Enumerable.Range(0, 5).Select(i => new LogBlock(t, 452e3, 10485760, $"f{i}")).ToArray();
+        var s = RateCalculator.GetRateSeries(five);
+        Assert.All(s, v => Assert.Equal(5 * 452e3, v));
+        for (var i = 0; i < five.Length; i++) Assert.Equal(s[i], RateCalculator.GetInFlightRate(five, i)); // series = one point
+    }
+
+    [Fact]
+    public void Series_a_block_alone_keeps_its_rate_and_no_block_is_an_empty_series()
+    {
+        Assert.Equal(new[] { 262e3 }, RateCalculator.GetRateSeries(new[] { Lent }));
+        Assert.Empty(RateCalculator.GetRateSeries(Array.Empty<LogBlock>()));
+    }
+
+    // 30 min ending 12:00:30, scale 1.2 Mbps x 1.15: y = 36 - 1.2/1.38 x 33 = 7; 0.8 -> 17; 0.4 -> 26 (a single block gave 24)
+    [Fact]
+    public void Curve_height_follows_the_sum_of_threads_not_the_block() =>
+        Assert.Equal("0,36 267,36 267,7 269,17 270,26 272,26", Curve(Trois, "12:00:30"));
+
+    [Fact]
+    public void Hover_shows_the_sum_of_threads() =>
+        Assert.Equal(
+            "12:00:00  -  1.2 Mbps  -  10.0 MB\r\np0.mkv",
+            GraphCurve.GetHit(Trois, null, 0, (1800 - 30) / 1800.0 * 272, 272, Tp.AddSeconds(30), true)!.Text);
 
     [Fact]
     public void Curve_a_real_gap_drops_back_to_zero() => Assert.Equal("0,36 91,36 91,22 95,7 95,36 181,36 181,29 272,36", Curve(Pts, "12:00"));

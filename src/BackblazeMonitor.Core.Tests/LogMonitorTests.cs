@@ -202,6 +202,22 @@ public sealed class LogMonitorTests : IDisposable
         Assert.Equal(before, File.ReadAllText(_history));
     }
 
+    // BAC466.28: the peak is never under the rate displayed above it. Three blocks finished in 2 min = 31.5 MB / 120 s =
+    // 2.1 Mbps current, while the sum in flight only reaches 1.2 Mbps (few threads seen): the peak follows the larger
+    [Fact]
+    public void The_peak_is_never_under_the_current_rate()
+    {
+        static string L(string at) => $"{at} -  large  - throttle manual   8  -  400 kBits/sec - 10485760 bytes - Chunk 00032 of I:\\a.mkv";
+        WriteLog("25.log", Lines.Join(L("2026-09-25 12:00:00"), L("2026-09-25 12:00:10"), L("2026-09-25 12:00:20"), ""), "2026-09-25 12:00:20");
+        var m = NewMonitor();
+        var now = T("2026-09-25 12:00:30");
+        m.Sample(now);
+        m.Refresh(now);
+        Assert.Equal(3 * 10485760 * 8 / 120.0, m.Rate);
+        Assert.Equal(m.Rate, m.Peak);
+        Assert.True(m.Peak > 1.2e6);
+    }
+
     // ---------- Slow upload, seen by the tile ----------
     [Fact]
     public void Slow_upload_is_uploading_then_no_transfer()
