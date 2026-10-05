@@ -20,6 +20,14 @@ public class UiLogicTests
     public void NativeErrorMapsToOutcome(int code, ActionOutcome expected) =>
         Assert.Equal(expected, ActionOutcomes.FromNativeError(code));
 
+    // BAC466.34: a bzcli run cut after the delay says so
+    [Theory]
+    [InlineData(BzAutoOutcome.Done, "auto enabled", true)]
+    [InlineData(BzAutoOutcome.Failed, "failed", false)]
+    [InlineData(BzAutoOutcome.TimedOut, "timed out", false)]
+    public void AutoModeMessageNamesTheOutcome(BzAutoOutcome outcome, string text, bool ok) =>
+        Assert.Equal((text, ok), LimitMessages.ForAuto(outcome));
+
     // BAC466.14: a failed stop/restart still counts as requested here; only a declined UAC prompt does not
     [Theory]
     [InlineData(ActionOutcome.Done, true)]

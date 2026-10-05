@@ -69,6 +69,25 @@ public class VacationTests
         Assert.Equal(63, Formatting.GetTrayText("Running", "5 MB/s", new string('x', 80)).Length);
     }
 
+    // BAC466.15: the cut at 63 characters must not eat the vacation line for the REAL texts (states x rates up to
+    // 999.9 Mbps x durations up to 335h59m); a new, longer state will turn this guard red
+    [Fact]
+    public void Tray_cut_never_eats_the_vacation_line_for_real_texts()
+    {
+        var states = new[]
+        {
+            "Stopped", "Running", "Starting...", "Stopping...", "Pausing...", "Resuming...", "Paused",
+            ServiceText.PausedByWitness, "Service not found", "Status unavailable", "Loading...",
+        };
+        var rates = new[] { "0 kbps", "999 kbps", "999.9 Mbps", "125.0 MB/s", "0 KB/s" };
+        var notWhole = from st in states
+                       from sp in rates
+                       from v in new[] { "1h00m", "335h59m" }
+                       where !Formatting.GetTrayText(st, sp, v).EndsWith("Vacation: " + v, StringComparison.Ordinal)
+                       select $"{st}|{sp}|{v}";
+        Assert.Empty(notWhole);
+    }
+
     // ---------- What goes to ssh ----------
     [Theory]
     [InlineData(0, "off")]

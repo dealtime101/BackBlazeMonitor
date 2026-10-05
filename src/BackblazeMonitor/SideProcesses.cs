@@ -108,16 +108,16 @@ internal static class VacationSsh
 /// <summary>Switches Backblaze to automatic mode through bzcli (no admin rights needed).</summary>
 internal static class BzCli
 {
-    private const int TimeoutMs = 60_000;
+    private const int TimeoutMs = 30_000; // as the script: bzcli configure takes a second or two
 
     /// <summary>Whether bzcli.exe is installed.</summary>
     public static bool Exists() => File.Exists(AppPaths.BzCli);
 
     /// <summary>
     /// Runs <c>bzcli configure</c> with a temporary configuration file, pumping messages while it runs.
-    /// Returns whether it exited with 0. Always cleans up the temporary files.
+    /// Says whether it exited with 0, failed, or was killed for running too long. Always cleans up the temporary files.
     /// </summary>
-    public static bool EnableAuto()
+    public static BzAutoOutcome EnableAuto()
     {
         var tmp = Path.Combine(Path.GetTempPath(), "bzauto_" + Guid.NewGuid().ToString("N") + ".json");
         try
@@ -132,7 +132,7 @@ internal static class BzCli
                 Arguments = BzAutoCommands.GetArguments(tmp),
             };
             using var p = Process.Start(psi);
-            if (p is null) return false;
+            if (p is null) return BzAutoOutcome.Failed;
             // Drain both pipes so a chatty tool cannot block on a full buffer
             p.OutputDataReceived += (_, _) => { };
             p.ErrorDataReceived += (_, _) => { };
@@ -150,15 +150,15 @@ internal static class BzCli
                 }
 
                 p.WaitForExit();
-                return false;
+                return BzAutoOutcome.TimedOut;
             }
 
             p.WaitForExit();
-            return p.ExitCode == 0;
+            return p.ExitCode == 0 ? BzAutoOutcome.Done : BzAutoOutcome.Failed;
         }
         catch
         {
-            return false;
+            return BzAutoOutcome.Failed;
         }
         finally
         {

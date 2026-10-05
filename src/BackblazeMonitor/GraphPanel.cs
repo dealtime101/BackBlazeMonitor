@@ -12,9 +12,15 @@ internal sealed class UiStyle : IDisposable
     public static readonly Color Orange = Color.Orange;
     public static readonly Color Gray = Color.Gray;
     public static readonly Color DarkGray = Color.FromArgb(90, 90, 90);
-    public static readonly Color IdleSpeed = Color.FromArgb(150, 150, 150);
-    public static readonly Color IdleIcon = Color.FromArgb(190, 190, 190);
-    public static readonly Color LinkAmber = Color.FromArgb(200, 120, 0);
+
+    // Grey of the small texts (7.5 pt): 5.9:1 on white; Color.Gray (128) only reaches 3.95:1, under the 4.5:1 of
+    // WCAG 1.4.3 (BAC466.10)
+    public static readonly Color Muted = Color.FromArgb(100, 100, 100);
+    public static readonly Color IdleSpeed = Muted;
+    public static readonly Color IdleIcon = Color.FromArgb(140, 140, 140);
+
+    // 5.3:1 on white (200, 120, 0 gave 3.4:1)
+    public static readonly Color LinkAmber = Color.FromArgb(160, 90, 0);
 
     public Font Status { get; } = new("Segoe UI", 11f, FontStyle.Bold);
 
@@ -86,7 +92,7 @@ internal sealed class GraphPanel : Control
 {
     private readonly SolidBrush _back = new(Color.FromArgb(248, 249, 251));
     private readonly SolidBrush _fill = new(Color.FromArgb(55, 0, 120, 212));
-    private readonly SolidBrush _message = new(Color.FromArgb(165, 165, 165));
+    private readonly SolidBrush _message = new(UiStyle.Muted);
     private readonly Pen _line = new(UiStyle.Accent, 1.6f);
     private readonly Pen _marker = new(Color.FromArgb(150, 60, 60, 60));
     private readonly Pen _border = new(Color.FromArgb(224, 226, 230));

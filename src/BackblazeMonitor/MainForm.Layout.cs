@@ -97,7 +97,7 @@ internal sealed partial class MainForm
         tipGeneral.SetToolTip(_btnPin, "Always on top");
 
         _lblDetails = MakeLabel(_style.Details, UiStyle.DarkGray, new Point(38, 40), new Size(248, 18));
-        _lblUpdated = MakeLabel(_style.Small, UiStyle.Gray, new Point(38, 58), new Size(248, 16));
+        _lblUpdated = MakeLabel(_style.Small, UiStyle.Muted, new Point(38, 58), new Size(248, 16));
 
         var sep = new Panel
         {
@@ -110,7 +110,7 @@ internal sealed partial class MainForm
         _lblUpIcon = MakeLabel(_style.Glyph, UiStyle.IdleIcon, new Point(14, 90), new Size(22, 22), "");
         _lblSpeed = MakeLabel(_style.Speed, UiStyle.IdleSpeed, new Point(36, 85), new Size(140, 28), "--");
         _lblSpeed.Cursor = Cursors.Hand;
-        _lblNetTag = MakeLabel(_style.Small, UiStyle.Gray, new Point(176, 93), new Size(110, 16));
+        _lblNetTag = MakeLabel(_style.Small, UiStyle.Muted, new Point(176, 93), new Size(110, 16));
         _lblNetTag.TextAlign = ContentAlignment.MiddleRight;
 
         // Chart
@@ -118,10 +118,14 @@ internal sealed partial class MainForm
         {
             Location = new Point(14, 116),
             Size = new Size(272, 38),
+            // A screen reader does not read a drawn panel: name and role fixed here, description redone on each
+            // refresh (period and figures, see RenderNetwork) (BAC466.9)
+            AccessibleName = "Upload chart",
+            AccessibleRole = AccessibleRole.Chart,
         };
 
-        _lblNetStats = MakeLabel(_style.Small, UiStyle.Gray, new Point(14, 158), new Size(272, 16));
-        _lblRemain = MakeLabel(_style.Small, UiStyle.Gray, new Point(14, 176), new Size(272, 16));
+        _lblNetStats = MakeLabel(_style.Small, UiStyle.Muted, new Point(14, 158), new Size(272, 16));
+        _lblRemain = MakeLabel(_style.Small, UiStyle.Muted, new Point(14, 176), new Size(272, 16));
         _lblRemain.Cursor = Cursors.Hand;
         tipGeneral.SetToolTip(_lblRemain, "Click: progress per disk");
 
@@ -139,7 +143,7 @@ internal sealed partial class MainForm
             TabIndex = 1,
         };
         foreach (var c in _choices) _cboLimit.Items.Add(c.Text);
-        _lblLimitMsg = MakeLabel(_style.Small, UiStyle.Gray, new Point(202, 201), new Size(84, 18));
+        _lblLimitMsg = MakeLabel(_style.Small, UiStyle.Muted, new Point(202, 201), new Size(84, 18));
         _lblLimitMsg.TextAlign = ContentAlignment.MiddleRight;
         tipGeneral.SetToolTip(
             _cboLimit,
@@ -159,7 +163,7 @@ internal sealed partial class MainForm
             Location = new Point(14, 226),
             Size = new Size(272, 18),
             Font = _style.Small,
-            ForeColor = UiStyle.Gray,
+            ForeColor = UiStyle.Muted,
             LinkColor = UiStyle.LinkAmber,
             ActiveLinkColor = UiStyle.LinkAmber,
             LinkBehavior = LinkBehavior.NeverUnderline,
@@ -180,7 +184,7 @@ internal sealed partial class MainForm
             Location = new Point(14, 286),
             Size = new Size(272, 18),
             Font = _style.Small,
-            ForeColor = UiStyle.Gray,
+            ForeColor = UiStyle.Muted,
             FlatStyle = FlatStyle.Flat,
             TextAlign = ContentAlignment.MiddleLeft,
             AccessibleName = "Last files sent",

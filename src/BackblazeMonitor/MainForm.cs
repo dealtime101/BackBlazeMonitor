@@ -387,6 +387,7 @@ internal sealed partial class MainForm : Form, ITrayHost
 
         _hist = m.GetHistory(period, now);
         _lblNetStats.Text = NetworkTexts.GetStatsText(m.State, period, _hist, m.Peak, m.Total, bits);
+        _graph.AccessibleDescription = Periods.All[period].Tip + " : " + _lblNetStats.Text;
 
         // Tooltip: the current file, without flickering on every tick
         _tipHelp = NetworkTexts.GetTipHelp(period);
@@ -522,7 +523,7 @@ internal sealed partial class MainForm : Form, ITrayHost
         {
             MessageTone.Good => UiStyle.Green,
             MessageTone.Bad => UiStyle.Red,
-            _ => UiStyle.Gray,
+            _ => UiStyle.Muted,
         };
         _lblLimitMsg.Text = _limitMsg.Text;
     }
@@ -792,18 +793,19 @@ internal sealed partial class MainForm : Form, ITrayHost
 
         if (Msg(BzAutoCommands.ConfirmText, BzAutoCommands.ConfirmTitle, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
 
-        bool ok;
+        BzAutoOutcome outcome;
         BeginExclusive();
         try
         {
-            ok = BzCli.EnableAuto();
+            outcome = BzCli.EnableAuto();
         }
         finally
         {
             EndExclusive();
         }
 
-        SetLimitMessage(ok ? LimitMessages.AutoEnabled : LimitMessages.AutoFailed, ok);
+        var (text, ok) = LimitMessages.ForAuto(outcome);
+        SetLimitMessage(text, ok);
         _bzSync.Invalidate(); // force a re-read of bzinfo.xml
     }
 
@@ -834,7 +836,8 @@ internal sealed partial class MainForm : Form, ITrayHost
         }
         catch
         {
-            // Keep what we have
+            // A path .NET refuses: the cell says so instead of staying empty (BAC466.488)
+            size = "unreadable";
         }
 
         return size;

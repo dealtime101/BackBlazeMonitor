@@ -15,6 +15,16 @@ public enum ActionOutcome
     Cancelled,
 }
 
+/// <summary>How the switch of Backblaze to automatic mode (bzcli) ended.</summary>
+public enum BzAutoOutcome
+{
+    Done,
+    Failed,
+
+    /// <summary>bzcli did not finish in time and was killed.</summary>
+    TimedOut,
+}
+
 /// <summary>Mapping of exit codes and Windows errors to an <see cref="ActionOutcome"/>.</summary>
 public static class ActionOutcomes
 {
@@ -76,6 +86,15 @@ public static class LimitMessages
     public const string Failed = "failed/denied";
     public const string AutoEnabled = "auto enabled";
     public const string AutoFailed = "failed";
+    public const string AutoTimedOut = "timed out";
+
+    /// <summary>Message and tone after the switch to automatic mode: a cut run says "timed out", not just "failed" (BAC466.34).</summary>
+    public static (string Text, bool Ok) ForAuto(BzAutoOutcome outcome) => outcome switch
+    {
+        BzAutoOutcome.Done => (AutoEnabled, true),
+        BzAutoOutcome.TimedOut => (AutoTimedOut, false),
+        _ => (AutoFailed, false),
+    };
     public const string InvalidWindow = "invalid window";
     public const string WindowNotActive = "window not active";
 }
