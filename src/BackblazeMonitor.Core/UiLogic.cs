@@ -77,6 +77,7 @@ public static class LimitMessages
     public const string AutoEnabled = "auto enabled";
     public const string AutoFailed = "failed";
     public const string InvalidWindow = "invalid window";
+    public const string WindowNotActive = "window not active";
 }
 
 /// <summary>Texts of the time-window dialog.</summary>
@@ -196,13 +197,28 @@ public sealed class LimitMessageState
     /// One tick: ages the message, and once it is gone shows the next window switch (or nothing).
     /// Returns whether the text or tone changed.
     /// </summary>
-    public bool Tick(Schedule? schedule, DateTime now)
+    /// <param name="schedule">The window in place, <c>null</c> = none.</param>
+    /// <param name="now">Current time.</param>
+    /// <param name="qosBits">Policy rate read last, -1 = not read yet: a window that does not follow is flagged.</param>
+    public bool Tick(Schedule? schedule, DateTime now, double qosBits = -1)
     {
         if (_ticksLeft > 0) _ticksLeft--;
         if (_ticksLeft > 0) return false;
-        var next = schedule is null ? "" : schedule.GetNext(now);
-        if (Text == next) return false;
-        Tone = MessageTone.Neutral;
+        var next = "";
+        var tone = MessageTone.Neutral;
+        if (schedule is not null)
+        {
+            next = schedule.GetNext(now);
+            // The task may have been deleted by hand: the effect no longer follows
+            if (!schedule.IsApplied(now, qosBits))
+            {
+                next = LimitMessages.WindowNotActive;
+                tone = MessageTone.Bad;
+            }
+        }
+
+        if (Text == next && Tone == tone) return false;
+        Tone = tone;
         Text = next;
         return true;
     }

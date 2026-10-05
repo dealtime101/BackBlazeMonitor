@@ -183,6 +183,34 @@ public class VolumeTests
         }
     }
 
+    // BAC466.35: a failed write is retried on later ticks, not only when the report changes again
+    [Fact]
+    public void A_failed_volumes_write_stays_pending_until_it_succeeds()
+    {
+        var dir = Directory.CreateTempSubdirectory("bbm-vol3").FullName;
+        try
+        {
+            var later = Path.Combine(dir, "later");
+            var path = Path.Combine(later, "volumes.txt");
+            var store = new VolumeSampleStore(path);
+            Assert.False(store.Record(V, T0)); // folder missing: not written
+            Assert.True(store.Pending);
+            store.RetryPending();
+            Assert.True(store.Pending); // still failing
+            Directory.CreateDirectory(later);
+            store.RetryPending();
+            Assert.False(store.Pending);
+            var again = new VolumeSampleStore(path);
+            again.Load();
+            Assert.Equal(store.Samples.Count, again.Samples.Count);
+            Assert.NotEmpty(again.Samples);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void Store_records_at_most_one_sample_per_disk_per_hour_and_saves()
     {

@@ -105,6 +105,33 @@ public class UiLogicTests
         Assert.Equal("", m.Text);
     }
 
+    // BAC466.46: the window is saved but the policy in place does not follow it (task deleted by hand)
+    [Theory]
+    [InlineData(12, 0, 3_000_000, true)]  // in the window, 3 Mbps wanted and in place
+    [InlineData(12, 0, 0, false)]         // in the window, no policy: not applied
+    [InlineData(23, 0, 0, true)]          // outside, none wanted and in place
+    [InlineData(23, 0, 3_000_000, false)] // outside, the limit is still there
+    [InlineData(8, 2, 0, true)]           // 2 min after a switch: the task may not have run yet
+    [InlineData(21, 57, 3_000_000, true)] // 3 min before the next one: same
+    [InlineData(12, 0, -1, true)]         // policy not read yet
+    public void ScheduleIsAppliedChecksThePolicyAwayFromSwitches(int h, int min, double bits, bool expected) =>
+        Assert.Equal(expected, Schedule.Parse("08:00-22:00=3")!.IsApplied(new DateTime(2026, 9, 30, h, min, 0), bits));
+
+    [Fact]
+    public void LimitMessageFlagsAWindowThatDoesNotFollow()
+    {
+        var s = Schedule.Parse("08:00-22:00=3");
+        var now = new DateTime(2026, 9, 30, 12, 0, 0);
+        var m = new LimitMessageState();
+        Assert.True(m.Tick(s, now, 0));
+        Assert.Equal("window not active", m.Text);
+        Assert.Equal(MessageTone.Bad, m.Tone);
+        Assert.False(m.Tick(s, now, 0));
+        Assert.True(m.Tick(s, now, 3_000_000)); // the policy follows again
+        Assert.Equal("22:00 -> none", m.Text);
+        Assert.Equal(MessageTone.Neutral, m.Tone);
+    }
+
     [Fact]
     public void QosPacerReadsFirstTickThenEveryTwentyAndSoonOnRequest()
     {

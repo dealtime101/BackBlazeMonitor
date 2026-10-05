@@ -60,6 +60,24 @@ public sealed record Schedule(int Start, int End, int Mbps, string Text)
         return string.Create(CultureInfo.InvariantCulture, $"{at / 60:00}:{at % 60:00} -> {to}");
     }
 
+    /// <summary>
+    /// Whether the policy in place (<paramref name="bits"/>, -1 = not read yet) is what the window wants now.
+    /// Near a switch (5 min either side) the task may not have run yet: not a fault. False when the window
+    /// is saved but its effect does not follow, e.g. the SYSTEM task was deleted by hand (BAC466.46).
+    /// </summary>
+    public bool IsApplied(DateTime now, double bits)
+    {
+        if (bits < 0) return true;
+        var m = now.Hour * 60 + now.Minute;
+        foreach (var b in new[] { Start, End })
+        {
+            if (((m - b + 1440) % 1440) < 5) return true;
+        }
+
+        var want = Contains(m) ? (double)Bits : 0;
+        return Math.Abs(bits - want) < 8;
+    }
+
     /// <summary>Bits per second applied during the window.</summary>
     public long Bits => Mbps * 1_000_000L;
 }

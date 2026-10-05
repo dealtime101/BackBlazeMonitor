@@ -63,7 +63,9 @@ public static class HistoryCalculator
         {
             foreach (var (k, v) in slots)
             {
-                if (k < first || k >= cur + stepT) continue;
+                // Never the future, whatever the slot width: a 15-minute slot later than now would fall in the
+                // current hour of the 7 days but not in the 24 h (BAC466.24)
+                if (k < first || k >= cur + stepT || k > now.Ticks) continue;
                 bytes[(int)((k - first) / stepT)] += v;
                 total += v;
             }

@@ -28,6 +28,7 @@ internal sealed partial class MainForm : Form, ITrayHost
     private bool _acting;        // a privileged action or bzcli is running
     private bool _syncing;       // programmatic update of the limit menu
     private bool _qosReading;
+    private double _qosBits = -1; // policy rate read last, -1 = not read yet
     private VacationState? _vac;  // last known state of the optional vacation mode
     private int _vacLeft = 1;     // ticks before the next state read
     private bool _vacBusy;        // a state read is running
@@ -299,6 +300,9 @@ internal sealed partial class MainForm : Form, ITrayHost
             if (r == RemainingRefresh.Updated) RecordVolumes();
         });
 
+        // A failed volumes.txt write is retried every pass, whatever the report does
+        Step("volumes retry", _volumes.RetryPending);
+
         BzInfoSyncResult? bz = null;
         Step("bzinfo", () => bz = _bzSync.Sync(StampUtc(BzPaths.InfoPath), () => SharedFile.ReadText(BzPaths.InfoPath)));
 
@@ -531,7 +535,7 @@ internal sealed partial class MainForm : Form, ITrayHost
 
     private void SyncQos(DateTime now)
     {
-        if (_limitMsg.Tick(_settings.Schedule, now)) ApplyLimitMessage();
+        if (_limitMsg.Tick(_settings.Schedule, now, _qosBits)) ApplyLimitMessage();
         if (_qosPacer.Due()) _ = ReadQosAsync();
     }
 
@@ -558,6 +562,7 @@ internal sealed partial class MainForm : Form, ITrayHost
     private void ApplyQosBits(double bits)
     {
         bits = Math.Round(bits);
+        _qosBits = bits;
         var idx = QosChoices.IndexOf(_choices, bits);
         // Policy set elsewhere with a value missing from the list: show its rate as is
         if (idx < 0)

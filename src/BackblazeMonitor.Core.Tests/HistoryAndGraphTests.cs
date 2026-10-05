@@ -53,7 +53,7 @@ public class HistoryAndGraphTests
     public void D7_quarter_hours_grouped_by_hour() => Assert.Equal((1e9 + 9e6) * 8 / 3600, Hs.Rates[143]);
 
     [Fact]
-    public void D7_volume() => Assert.Equal(1954001000, Hs.Bytes);
+    public void D7_volume_without_the_future_slot() => Assert.Equal(1954000000, Hs.Bytes); // 12:15 is after now (12:07:30): BAC466.24
 
     [Fact]
     public void History_without_a_log() =>

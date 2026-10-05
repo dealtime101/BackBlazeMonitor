@@ -65,7 +65,7 @@ public enum BzInfoSyncResult
     /// <summary>Same timestamp as the last successful read.</summary>
     Unchanged,
 
-    /// <summary>Empty or unreadable (locked): the timestamp is not remembered, retried at the next pass.</summary>
+    /// <summary>Empty, unreadable (locked) or cut (no closing tag): the timestamp is not remembered, retried at the next pass.</summary>
     Unreadable,
 
     /// <summary>Read and parsed.</summary>
@@ -95,6 +95,10 @@ public sealed class BzInfoSync
         if (_stamp == stampUtc) return BzInfoSyncResult.Unchanged;
         var raw = readText();
         if (string.IsNullOrEmpty(raw)) return BzInfoSyncResult.Unreadable;
+        // Read in the middle of a rewrite: no closing tag (the real files all carry it). Neither the display
+        // nor the timestamp moves, the next pass reads again, instead of mixing old and new values
+        // (BAC466.33)
+        if (!raw.TrimEnd().EndsWith("</bzinfo>", StringComparison.Ordinal)) return BzInfoSyncResult.Unreadable;
         _stamp = stampUtc;
         Info = BzInfo.Parse(raw, Info);
         return BzInfoSyncResult.Updated;

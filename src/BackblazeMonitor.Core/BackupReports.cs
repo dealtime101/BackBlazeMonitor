@@ -248,7 +248,19 @@ public sealed class VolumeSampleStore
     {
         if (vols.Count == 0) return false;
         Samples = VolumeSamples.Add(Samples, vols, nowSec);
-        return VolumeSamples.Save(_path, Samples);
+        // The flag stays up until a write succeeds: Record only runs when the report changes (about hourly),
+        // so without it a failed write would never be retried (BAC466.35)
+        Pending = !VolumeSamples.Save(_path, Samples);
+        return !Pending;
+    }
+
+    /// <summary>A save failed and has not been retried successfully yet.</summary>
+    public bool Pending { get; private set; }
+
+    /// <summary>Retries the save in waiting, if any; called every tick, whatever the report does.</summary>
+    public void RetryPending()
+    {
+        if (Pending) Pending = !VolumeSamples.Save(_path, Samples);
     }
 }
 

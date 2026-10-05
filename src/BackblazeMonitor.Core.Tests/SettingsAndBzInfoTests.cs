@@ -75,6 +75,20 @@ public class SettingsAndBzInfoTests
     }
 
     // ---------- bzinfo.xml ----------
+    // BAC466.33: read in the middle of a rewrite (no closing tag): nothing moves, the stamp is not kept
+    [Fact]
+    public void A_bzinfo_cut_before_its_closing_tag_is_not_read_and_is_retried()
+    {
+        var sync = new BzInfoSync();
+        var stamp = new DateTime(2026, 9, 25, 12, 0, 0, DateTimeKind.Utc);
+        var whole = BzXml("true", "continuously");
+        var cut = whole.Substring(0, whole.IndexOf("</bzinfo>", StringComparison.Ordinal));
+        Assert.Equal(BzInfoSyncResult.Unreadable, sync.Sync(stamp, () => cut));
+        Assert.Equal(BzInfo.Unknown, sync.Info);
+        Assert.Equal(BzInfoSyncResult.Updated, sync.Sync(stamp, () => whole + "\r\n")); // same stamp: read again
+        Assert.Equal("continuously", sync.Info.Schedule);
+    }
+
     private static string BzXml(string auto, string sched) =>
         $"<bzinfo><do_backup net_auto_throttle=\"{auto}\" net_throttle=\"50\" num_backup_threads=\"4\" backup_schedule_type=\"{sched}\" /></bzinfo>";
 
